@@ -1,8 +1,19 @@
 # Packets are sniffed here and passed to the AI for further processing
 from scapy.all import Ether, PcapReader, Raw, sniff, wrpcap
 from rich.console import Console
-    
+
 console = Console()
+
+
+# Build a one-line, human-readable summary of a captured packet.
+def packet_summary(packet):
+    summary = packet.summary()
+    try:
+        src = packet[Ether].src
+        dst = packet[Ether].dst
+        return f"[bold]{summary}[/bold]  ({src} -> {dst})"
+    except Exception:
+        return summary
 
 
 # Packet sniffing and saving to a file for further AI processing.

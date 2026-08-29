@@ -31,9 +31,11 @@ def main():
     if not selected_interface:
         return
     if test.check_test_runn(selected_interface) == True:
-        console.print("[bold green]All checks passed. Proceeding with the script.[/bold green]")
+        console.print("[bold green]All checks passed. Launching the dashboard.[/bold green]")
         test.api_ai_keys_save()
-        snifer.packet_sniffer(selected_interface)
+        from p_15.config import create_dashboard_config
+        from p_15.tui_app import run_tui
+        run_tui(create_dashboard_config(), selected_interface)
     else:
         console.print("[bold red]One or more checks failed. Please check your network settings and try again.[/bold red]")
         console.print("[bold yellow] Please make sure your wifi card is up and running and supported [/bold yellow]")  
