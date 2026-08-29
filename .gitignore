@@ -3,6 +3,11 @@
 .env.*
 !.env.example
 
+# Captured traffic and local data
+capture.pcap
+*.pcap
+data/
+
 # Python cache and build output
 __pycache__/
 *.py[cod]
