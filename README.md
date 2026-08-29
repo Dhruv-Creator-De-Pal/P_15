@@ -50,16 +50,6 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Configure credentials (optional)
-
-AI-powered features need a provider key. Copy the template and fill it in:
-
-```bash
-cp .env.example .env
-```
-
-The startup flow also prompts for provider keys and writes them to `.env` for you. The `.env` file is excluded from version control.
-
 ---
 
 ## Usage
@@ -69,64 +59,6 @@ sudo python main.py
 ```
 
 On Windows, run from an elevated (Administrator) terminal instead.
-
-### What happens
-
-1. The tool verifies it has the privileges needed to open an interface.
-2. It lists available wired interfaces and asks which one to use.
-3. It performs a short trial capture to confirm the interface is live.
-4. It records frames to `capture.pcap` and reports how many were seen.
-
-Example session:
-
-```
-Welcome to the P_15..........(Network Sniffer and Analyzer Tool)
-Checking for root/administrator privileges...
-Root privileges confirmed. Proceeding with the script.
-Checking for network interfaces...
-Available Ethernet interfaces:
-eth0
-
-Please select the ethernet interface you want to use for sniffing: eth0
-Ethernet interface is up and running.
-All checks passed. Proceeding with the script.
-Starting packet sniffing...
-Captured 10 packets.
-```
-
----
-
-## Configuration
-
-Settings live in an optional `.env` file or as environment variables.
-
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `OPENAI_API_KEY` | OpenAI provider key | — |
-| `GEMINI_API_KEY` | Gemini provider key | — |
-| `ANTHROPIC_API_KEY` | Anthropic provider key | — |
-| `HF_TOKEN` | Hugging Face token | — |
-| `AI_MODEL` | Default model identifier | `openai:gpt-4o-mini` |
-
-The capture layer reads no configuration of its own; frame counts and rotation are handled by the routine in `p_15/snifer.py`.
-
----
-
-## Project structure
-
-```
-P_15/
-├── main.py              # Entry point
-├── requirements.txt     # Python dependencies
-├── .env.example         # Credential template (placeholder only)
-├── capture.pcap         # Latest recording file
-└── p_15/
-    ├── __init__.py
-    ├── test.py          # Privilege, interface, and pre-run checks
-    ├── snifer.py        # Capture and frame decoding
-    ├── ai_engine.py     # Optional AI analysis helpers
-    └── config.py        # Dashboard configuration state
-```
 
 ---
 
@@ -143,12 +75,3 @@ Bring it up: `sudo ip link set eth0 up`, then confirm with `ip link show eth0`.
 
 **Capture permissions denied**
 Scapy needs elevated privileges to open raw sockets. Ensure you are running with `sudo`/Administrator and that the interface is not administratively down.
-
----
-
-## Notes
-
-- Elevated privileges are required to open network interfaces.
-- Recordings are written to `capture.pcap`, a local file.
-- Stored data lives in the local SQLite database and is not transmitted.
-- Network data may be sensitive. Only run this on interfaces and networks you are authorized to inspect, and review `.env` before sharing the repository.
