@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from rich.markup import escape
 from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -21,9 +22,17 @@ from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Footer, Header, Input, RichLog, Static
 
-from .ai_engine import chat as ai_chat
+from .ai_engine import query_ai
 from .config import DashboardConfig
 from .snifer import packet_summary
+from .vector_store import PacketVectorStore
+
+
+def _force_redraw(log: RichLog) -> None:
+    """Ensure new content is visible: scroll to bottom and force a repaint."""
+    if log.is_running:
+        log.scroll_end(animate=False)
+        log.refresh()
 
 
 class PacketLogWidget(RichLog):
@@ -35,7 +44,8 @@ class PacketLogWidget(RichLog):
 
     def log_packet(self, packet) -> None:
         line = packet_summary(packet)
-        self.write(Text.from_markup(f"[dim]{self._now()}[/dim]  {line}"))
+        self.write(Text.from_markup(f"[dim]{self._now()}[/dim]  {escape(str(line))}"))
+        _force_redraw(self)
 
     @staticmethod
     def _now() -> str:
@@ -50,14 +60,16 @@ class ChatPaneWidget(RichLog):
         self.border_title = "INTERNAL AI CHAT"
 
     def add_user(self, message: str) -> None:
-        self.write(Text.from_markup(f"[bold cyan]You:[/bold cyan] {message}"))
+        self.write(Text.from_markup(f"[bold cyan]You:[/bold cyan] {escape(message)}"))
+        _force_redraw(self)
 
     def add_assistant(self, message: str) -> None:
-        self.write(Text.from_markup("[bold green]AI:[/bold green]"))
-        self.write(message)
+        self.write(Text.from_markup(f"[bold green]AI:[/bold green] {escape(message)}"))
+        _force_redraw(self)
 
     def add_system(self, message: str) -> None:
-        self.write(Text.from_markup(f"[dim][i]{message}[/i][/dim]"))
+        self.write(Text.from_markup(f"[dim][i]{escape(message)}[/i][/dim]"))
+        _force_redraw(self)
 
 
 class UserInputWidget(Input):
@@ -119,6 +131,7 @@ class P15TUI(App):
         super().__init__()
         self.config = config
         self.interface = interface
+        self.vector_store = PacketVectorStore()
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -142,8 +155,40 @@ class P15TUI(App):
         self.sub_title = f"Interface: {self.interface or self.config.interface}"
         self.chat_pane = self.query_one("#chat_pane", ChatPaneWidget)
         self.packet_log = self.query_one("#packet_log", PacketLogWidget)
-        self.chat_pane.add_system("Chat system ready. Start capturing packets...")
+        self._seed_from_pcap()
+        self._refresh_context_status()
+        self.chat_pane.add_system(
+            "Chat system ready. Type a question and press Enter. "
+            "The AI answers using the captured packet context."
+        )
         self.start_capture()
+
+    def _refresh_context_status(self) -> None:
+        self.sub_title = (
+            f"Interface: {self.interface or self.config.interface}  |  "
+            f"Context: {len(self.vector_store)} packets"
+        )
+
+    def _seed_from_pcap(self) -> None:
+        """Load any existing capture.pcap into the context vector store."""
+        from scapy.all import PcapReader
+
+        import os
+
+        pcap_path = os.path.join(os.getcwd(), "capture.pcap")
+        if not os.path.exists(pcap_path):
+            return
+        try:
+            with PcapReader(pcap_path) as reader:
+                packets = [pkt for pkt in reader][:200]
+            added = self.vector_store.add_packets(packets)
+            self._refresh_context_status()
+            if added:
+                self.chat_pane.add_system(
+                    f"Loaded {added} packet(s) from capture.pcap into context."
+                )
+        except Exception as exc:  # noqa: BLE001
+            self.chat_pane.add_system(f"Could not load capture.pcap: {exc}")
 
     @on(Input.Submitted, "#user_input")
     def on_submit(self, event: Input.Submitted) -> None:
@@ -159,11 +204,40 @@ class P15TUI(App):
     def send_to_ai(self, message: str) -> None:
         self._set_status("Analyzing...")
         try:
-            result = ai_chat(message, model=self.config.ai_model)
+            result = query_ai(
+                message,
+                retriever=self.vector_store,
+                model=self.config.ai_model,
+                limit=5,
+            )
             answer = result.get("answer", "No answer returned.")
         except Exception as exc:  # noqa: BLE001 - report inline in the chat pane
-            answer = f"AI request failed: {exc}"
+            answer = self._contextual_reply(message, exc)
         self.call_from_thread(self._deliver_ai, answer)
+
+    def _contextual_reply(self, message: str, exc: Exception) -> str:
+        """Fallback answer built from the packet context when the AI is
+        unavailable (no API key / no network). Keeps the chat functional."""
+        retrieved = self.vector_store.retrieve(message, k=5)
+        total = len(self.vector_store)
+        banner = (
+            "AI provider unavailable (no/expired API key). "
+            "Showing context-based summary instead."
+        )
+        if not retrieved:
+            return (
+                f"{banner}\nNo packets in the context store ({total} total) to "
+                "answer from. Start/allow live capture or load a capture.pcap."
+            )
+        lines = [f"{banner}\nRelevant packets from context ({total} total):"]
+        for index, record in enumerate(retrieved, start=1):
+            summary = record.get("summary", "unknown")
+            text = record.get("readable_text", "")
+            if text:
+                lines.append(f"  {index}. {summary} | payload: {text[:80]}")
+            else:
+                lines.append(f"  {index}. {summary}")
+        return "\n".join(lines)
 
     def _deliver_ai(self, answer: str) -> None:
         self.chat_pane.add_assistant(answer)
@@ -175,8 +249,16 @@ class P15TUI(App):
     @work(thread=True, exclusive=True)
     def start_capture(self) -> None:
         from scapy.all import sniff
+        import os
 
         iface = self.interface or self.config.interface
+        if os.name == "posix" and os.geteuid() != 0:
+            self.call_from_thread(
+                self.chat_pane.add_system,
+                "Live capture needs root. Run as 'sudo python3 main.py' — "
+                "or place a capture.pcap in the project folder for context.",
+            )
+            return
         while True:
             try:
                 sniff(
@@ -186,15 +268,17 @@ class P15TUI(App):
                     prn=self._on_packet,
                     store=False,
                 )
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
                 self.call_from_thread(
                     self.chat_pane.add_system,
-                    "Capture stopped or interface unavailable.",
+                    f"Capture stopped or interface unavailable: {exc}",
                 )
                 return
 
     def _on_packet(self, packet) -> None:
+        self.vector_store.add_packet(packet)
         self.call_from_thread(self.packet_log.log_packet, packet)
+        self.call_from_thread(self._refresh_context_status)
 
 
 def run_tui(config: DashboardConfig, interface: str | None = None) -> None:

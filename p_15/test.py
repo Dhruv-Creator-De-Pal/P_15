@@ -80,7 +80,7 @@ def check_test_runn(iface):
 # Collect AI API keys upfront to avoid interruption later
 def api_ai_keys_save():
     """Collect and save API keys for the supported AI providers."""
-    env_file = os.path.join(os.path.dirname(__file__), ".env")
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     providers = {
         "OpenAI": "OPENAI_API_KEY",
         "Gemini": "GEMINI_API_KEY",

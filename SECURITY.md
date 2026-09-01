@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-Please do **not** open a public issue for security problems. Email the maintainers privately at `dhruvdwivedi.wog@gmail.com` and include as much detail as possible: affected version, steps to reproduce, and impact.
+Please do **not** open a public issue for security problems. Report privately through the repository owner's preferred secure channel (see the project's GitHub security advisories) and include as much detail as possible: affected version, steps to reproduce, and impact.
 
 You should receive an acknowledgement within 72 hours. If the issue is confirmed, we will coordinate a fix and disclosure.
 
