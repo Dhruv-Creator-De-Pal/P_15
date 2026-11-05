@@ -1,9 +1,9 @@
-# P_15
+
 
 # Notice: ## New Update expected with TUI ;)
 
 A command-line assistant for inspecting, storing, and reasoning about local network traffic. It captures session data, keeps a local record of what it sees, and optionally consults a language model to help interpret the results.
-
+# P _ 15
 Built in Python with a dependency list small enough to be readable, and designed to run on any 64-bit Linux/Unix host (x86-64 or ARM64) where a wired interface is available.
 
 ---
