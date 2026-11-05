@@ -1,7 +1,6 @@
 # P_15
 
-# Notice:
-## New Update expected with TUI ;)
+# Notice: ## New Update expected with TUI ;)
 
 A command-line assistant for inspecting, storing, and reasoning about local network traffic. It captures session data, keeps a local record of what it sees, and optionally consults a language model to help interpret the results.
 
